@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keep Bouncing!</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: #001f3f;
+            cursor: none;
+        }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        .ball {
+            position: absolute;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+        }
+        #paddle {
+            position: absolute;
+            bottom: 20px;
+            width: 150px;
+            height: 20px;
+            background: #AAAAAA;
+            border-radius: 10px;
+        }
+        #score, #lives {
+            position: absolute;
+            top: 20px;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            color: #FFFFFF;
+        }
+        #score { left: 20px; }
+        #lives { right: 20px; }
+        .star {
+            position: absolute;
+            background: #FFF;
+            border-radius: 50%;
+        }
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #FFFFFF;
+            font-family: Arial, sans-serif;
+        }
+        #startButton, #restartButton {
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="paddle"></div>
+        <div id="score">Score: 0</div>
+        <div id="lives">Lives: 5</div>
+        <div id="startScreen">
+            <h1>Breakout-Style Ball Game</h1>
+            <button id="startButton">Start Game</button>
+        </div>
+        <div id="gameOverScreen" style="display: none;">
+            <h1>Game Over</h1>
+            <p id="finalScore"></p>
+            <button id="restartButton">Restart Game</button>
+        </div>
+    </div>
+
+    <script>
+        const gameContainer = document.getElementById('gameContainer');
+        const paddle = document.getElementById('paddle');
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const finalScoreElement = document.getElementById('finalScore');
+
+        let score = 0;
+        let lives = 5;
+        let gameRunning = false;
+        let animationId;
+
+        const balls = [];
+        const ballColors = ['#FF4136', '#FFDC00', '#2ECC40', '#0074D9', '#B10DC9'];
+
+        function createBall() {
+            const ball = document.createElement('div');
+            ball.className = 'ball';
+            ball.style.background = ballColors[Math.floor(Math.random() * ballColors.length)];
+            ball.style.left = `${Math.random() * (gameContainer.clientWidth - 20)}px`;
+            ball.style.top = '0px';
+            gameContainer.appendChild(ball);
+
+            const gravity = 0.1 + Math.random() * 0.2;
+            balls.push({ element: ball, speedY: 0, speedX: 1 - Math.random() * 2, gravity });
+        }
+
+        function updateGame() {
+            if (!gameRunning) return;
+
+            const containerRect = gameContainer.getBoundingClientRect();
+            const paddleRect = paddle.getBoundingClientRect();
+
+            balls.forEach((ball, index) => {
+                const ballRect = ball.element.getBoundingClientRect();
+
+                // Apply gravity
+                ball.speedY += ball.gravity;
+
+                // Update position
+                ball.element.style.top = `${ballRect.top + ball.speedY}px`;
+                ball.element.style.left = `${ballRect.left + ball.speedX}px`;
+
+                // Wall collision
+                if (ballRect.left <= containerRect.left || ballRect.right >= containerRect.right) {
+                    ball.speedX = -ball.speedX;
+                    // Ensure a minimum horizontal speed
+                    const minSpeed = 1;
+                    if (Math.abs(ball.speedX) < minSpeed) {
+                        ball.speedX = ball.speedX > 0 ? minSpeed : -minSpeed;
+                    }
+                    // Move the ball away from the wall to prevent sticking
+                    if (ballRect.left <= containerRect.left) {
+                        ball.element.style.left = `${containerRect.left + 1}px`;
+                    } else {
+                        ball.element.style.left = `${containerRect.right - ballRect.width - 1}px`;
+                    }
+                }
+
+                // Paddle collision
+                if (ballRect.bottom >= paddleRect.top &&
+                    ballRect.left < paddleRect.right &&
+                    ballRect.right > paddleRect.left &&
+                    ball.speedY > 0) {
+                    // Calculate angle based on where the ball hit the paddle
+                    const hitPosition = (ballRect.left + ballRect.right) / 2 - paddleRect.left;
+                    const normalizedHitPosition = hitPosition / paddleRect.width;
+                    const angle = (normalizedHitPosition - 0.5) * Math.PI / 3; // Max 60 degree angle
+
+                    const speed = Math.sqrt(ball.speedX * ball.speedX + ball.speedY * ball.speedY);
+                    ball.speedY = -Math.abs(Math.cos(angle) * speed);
+                    ball.speedX = Math.sin(angle) * speed;
+
+                    // Ensure a minimum horizontal speed after paddle hit
+                    const minSpeed = 1;
+                    if (Math.abs(ball.speedX) < minSpeed) {
+                        ball.speedX = ball.speedX > 0 ? minSpeed : -minSpeed;
+                    }
+
+                    score++;
+                    scoreElement.textContent = `Score: ${score}`;
+                }
+
+                // Ball out of bounds
+                if (ballRect.top > containerRect.bottom) {
+                    gameContainer.removeChild(ball.element);
+                    balls.splice(index, 1);
+                    lives--;
+                    livesElement.textContent = `Lives: ${lives}`;
+                    if (lives <= 0) {
+                        gameOver();
+                    } else {
+                        createBall();
+                    }
+                }
+            });
+
+            animationId = requestAnimationFrame(updateGame);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationId);
+            finalScoreElement.textContent = `Your score: ${score}`;
+            gameOverScreen.style.display = 'block';
+        }
+
+        function movePaddle(e) {
+            const containerRect = gameContainer.getBoundingClientRect();
+            let newPosition = e.clientX - containerRect.left - paddle.clientWidth / 2;
+            newPosition = Math.max(0, Math.min(newPosition, containerRect.width - paddle.clientWidth));
+            paddle.style.left = `${newPosition}px`;
+        }
+
+        function createStars() {
+            for (let i = 0; i < 50; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.width = `${Math.random() * 2 + 1}px`;
+                star.style.height = star.style.width;
+                star.style.left = `${Math.random() * 100}%`;
+                star.style.top = `${Math.random() * 100}%`;
+                gameContainer.appendChild(star);
+            }
+        }
+
+        function startGame() {
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            score = 0;
+            lives = 5;
+            scoreElement.textContent = `Score: ${score}`;
+            livesElement.textContent = `Lives: ${lives}`;
+            gameRunning = true;
+            balls.forEach(ball => gameContainer.removeChild(ball.element));
+            balls.length = 0;
+            createBall();
+            updateGame();
+        }
+
+        createStars();
+        paddle.style.left = `${(gameContainer.clientWidth - paddle.clientWidth) / 2}px`;
+        gameContainer.addEventListener('mousemove', movePaddle);
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', startGame);
+    </script>
+</body>
+</html>
